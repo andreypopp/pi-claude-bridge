@@ -28,6 +28,7 @@ import { buildActionSummary, type ToolCallState } from "./askclaude-ui.js";
 import { askClaudeCallTags, askClaudeToolDescription, buildAskClaudeParams, resolveAskClaudeDefaults, resolveAskClaudeMode, type AskClaudeMode } from "./askclaude-schema.js";
 import { nonSystemMessages, toBridgeContext } from "./transcript.js";
 import { updateUsage, type SdkUsage } from "./usage.js";
+import { observationalMemoryDecision, observationalMemoryIsLoaded } from "./om-guard.js";
 
 // --- Debug logging ---
 // CLAUDE_BRIDGE_DEBUG=1 enables debug logging to the bridge log in pi's agent
@@ -878,6 +879,7 @@ export const __test = {
 	discardRewrittenQuery,
 	contextForToolResults,
 	isQueryAbandoned: (q: object) => abandonedQueries.has(q),
+	// Getter: the set is declared further down, past this object's initializer.
 	get activeQueryContexts() {
 		return activeQueryContexts;
 	},
@@ -1712,7 +1714,7 @@ const CONTINUE_AFTER_REWRITE_PROMPT =
  *  history — so the turn continues instead of ending here. Nothing is lost by
  *  killing the subprocess: pi owns the only copy of the conversation that counts. */
 function discardRewrittenQuery(c: QueryContext): void {
-	const discarded = c.activeQuery as { interrupt?: () => Promise<unknown>; close?: () => void } | null;
+	const discarded = c.activeQuery as ReturnType<typeof query> | null;
 	if (discarded) abandonedQueries.add(discarded);
 	c.activeQuery = null;
 	// Leaving the routing set is what stops this result coming straight back here:
@@ -2506,6 +2508,25 @@ export default function (pi: ExtensionAPI) {
 			`isSplitTurn=${event.preparation.isSplitTurn} messages=${event.preparation.messagesToSummarize.length} ` +
 			`turnPrefix=${event.preparation.turnPrefixMessages.length}`,
 		);
+		// pi keeps the last handler's compaction, so whoever loads last wins. When
+		// observational memory is going to answer, its summary is the better one and
+		// is free — decline and let pi keep OM's, whichever of us loaded last. Gated
+		// on OM actually being loaded (not just on its entries in history), so a
+		// session resumed with OM since disabled doesn't decline to a handler nobody
+		// registered — that fell through to pi's native summarizer over a bridge
+		// model, the issue #8 hang the takeover exists to prevent.
+		const om = observationalMemoryDecision(
+			event.branchEntries,
+			event.preparation.firstKeptEntryId,
+			observationalMemoryIsLoaded(pi.getCommands()),
+		);
+		if (om.willSummarize) {
+			debug(
+				`session_before_compact: declining takeover — observational memory will summarize ` +
+				`(observations=${om.observations} reflections=${om.reflections})`,
+			);
+			return undefined;
+		}
 		try {
 			reinjectPriorCompactionFileOps(event.branchEntries, event.preparation);
 			const compaction = await compact(
