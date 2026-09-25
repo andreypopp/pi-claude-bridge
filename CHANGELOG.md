@@ -1,5 +1,9 @@
 # Changelog
 
+## UNRELEASED
+
+- **Fix: deadlock when a stream is cut right after a tool call starts** — The bridge dispatched the call to pi with `{}` arguments at `content_block_start`, under an id Claude Code then dropped when it re-issued the call, so each side waited on the other. Tool calls now dispatch only once their block closes; unclosed blocks are dropped at `message_stop`. Covered by `tests/unit-unfinished-tool-call.mjs`.
+
 ## 0.9.1 — 2026-09-30
 
 - **Bump: Claude Sonnet 5.5 and pi-ai 0.99.1** — pi-ai update brings `claude-sonnet-5-5` with 1M context. Agent SDK now requires `^0.3.284`.
