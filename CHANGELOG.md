@@ -2,6 +2,7 @@
 
 ## UNRELEASED
 
+- **Fix: a local slash command's answer was shown twice** — a command with no stream_events (e.g. `/model`) delivers its text through an `assistant` message, then a `result` that repeats the same text; the success-path guard read `!turnSawStreamEvent` ("no stream events yet") rather than "no text delivered this turn", so both pushed a text block and pi's session stored one assistant message with two identical text parts. The guard now checks `turnBlocks` for an existing text block instead. Covered by `tests/unit-duplicate-result-text.mjs`.
 - **Fix: deadlock when a stream is cut right after a tool call starts** — The bridge dispatched the call to pi with `{}` arguments at `content_block_start`, under an id Claude Code then dropped when it re-issued the call, so each side waited on the other. Tool calls now dispatch only once their block closes; unclosed blocks are dropped at `message_stop`. Covered by `tests/unit-unfinished-tool-call.mjs`.
 
 ## 0.9.1 — 2026-09-30

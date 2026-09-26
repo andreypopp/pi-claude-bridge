@@ -1551,8 +1551,11 @@ async function consumeQuery(
 			case "result": {
 					// The failure itself was recorded above the guard, along with the served
 					// context window. What is left here is the success path: push the result
-					// text when no assistant message already delivered it.
-					if (resultError === undefined && !queryCtx.turnSawStreamEvent && message.subtype === "success") {
+					// text only if nothing this turn already delivered it — a local slash
+					// command emits no stream_events but does deliver its text through an
+					// `assistant` message (processAssistantMessage), and the result repeats
+					// that same text.
+					if (resultError === undefined && message.subtype === "success" && !queryCtx.turnSawStreamEvent && !queryCtx.turnBlocks.some((b: any) => b.type === "text")) {
 					ensureTurnStarted(queryCtx);
 					const text = message.result || "";
 					queryCtx.turnBlocks.push({ type: "text", text });
